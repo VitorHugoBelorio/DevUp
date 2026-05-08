@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuestionType {
+  short_text
+  long_text
+  number
+  scale
+  single_select
+  multi_select
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum MagicLinkPurpose {
+  LOGIN
+  VERIFY_EMAIL
+}
+
+model User {
+  id              String           @id @default(cuid())
+  name            String?
+  email           String           @unique
+  emailVerifiedAt DateTime?
+  role            UserRole         @default(USER)
+  sessions        UserSession[]
+  magicLinks      MagicLinkToken[]
+  diagnostics     Diagnostic[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([email])
+}
+
+model UserSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model MagicLinkToken {
+  id         String           @id @default(cuid())
+  tokenHash  String           @unique
+  email      String
+  purpose    MagicLinkPurpose
+  userId     String?
+  user       User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime         @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model Diagnostic {
+  id               String   @id @default(cuid())
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  input            Json
+  questionSnapshot Json
+  aiResult         Json
+  aiModel          String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model DiagnosticQuestion {
+  id          String       @id @default(cuid())
+  key         String       @unique
+  label       String
+  description String?
+  placeholder String?
+  type        QuestionType
+  required    Boolean      @default(true)
+  options     Json?
+  step        String
+  order       Int
+  aiHint      String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([isActive, order])
+}
