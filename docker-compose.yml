@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: devup-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: devup
+      POSTGRES_USER: devup
+      POSTGRES_PASSWORD: devup
+    ports:
+      - "5432:5432"
+    volumes:
+      - devup-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  devup-postgres-data:
