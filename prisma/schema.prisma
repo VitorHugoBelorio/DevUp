@@ -21,9 +21,35 @@ enum UserRole {
   ADMIN
 }
 
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
 enum MagicLinkPurpose {
   LOGIN
   VERIFY_EMAIL
+}
+
+enum AccessEventType {
+  MAGIC_LINK_REQUESTED
+  MAGIC_LINK_SENT
+  LOGIN_SUCCESS
+  LOGIN_BLOCKED
+  LOGOUT
+  ADMIN_UPDATED_USER
+}
+
+enum KnowledgeResourceType {
+  platform
+  article
+  blog
+  documentation
+  course
+  video
+  community
+  tool
+  other
 }
 
 model User {
@@ -32,13 +58,33 @@ model User {
   email           String           @unique
   emailVerifiedAt DateTime?
   role            UserRole         @default(USER)
+  status          UserStatus       @default(ACTIVE)
   sessions        UserSession[]
   magicLinks      MagicLinkToken[]
   diagnostics     Diagnostic[]
+  accessLogs      AccessLog[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
   @@index([email])
+  @@index([role, status])
+}
+
+model AccessLog {
+  id        String          @id @default(cuid())
+  userId    String?
+  user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email     String?
+  type      AccessEventType
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([email, createdAt])
+  @@index([type, createdAt])
+  @@index([createdAt])
 }
 
 model UserSession {
@@ -69,35 +115,95 @@ model MagicLinkToken {
 }
 
 model Diagnostic {
-  id               String   @id @default(cuid())
+  id               String          @id @default(cuid())
   userId           String?
-  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user             User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  formId           String?
+  form             DiagnosticForm? @relation(fields: [formId], references: [id], onDelete: SetNull)
   input            Json
+  formSnapshot     Json?
   questionSnapshot Json
   aiResult         Json
   aiModel          String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([createdAt])
   @@index([userId])
+  @@index([formId])
+}
+
+model DiagnosticForm {
+  id          String               @id @default(cuid())
+  slug        String               @unique
+  name        String
+  description String?
+  isActive    Boolean              @default(false)
+  isArchived  Boolean              @default(false)
+  questions   DiagnosticQuestion[]
+  diagnostics Diagnostic[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([isActive, isArchived])
 }
 
 model DiagnosticQuestion {
-  id          String       @id @default(cuid())
-  key         String       @unique
+  id          String         @id @default(cuid())
+  formId      String         @default("default-diagnostic-form")
+  form        DiagnosticForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  key         String
   label       String
   description String?
   placeholder String?
   type        QuestionType
-  required    Boolean      @default(true)
+  required    Boolean        @default(true)
   options     Json?
   step        String
   order       Int
   aiHint      String?
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
+  @@unique([formId, key])
   @@index([isActive, order])
+  @@index([formId, order])
+}
+
+model KnowledgeFlag {
+  id          String                  @id @default(cuid())
+  key         String                  @unique
+  label       String
+  description String?
+  resources   KnowledgeResourceFlag[]
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+}
+
+model KnowledgeResource {
+  id          String                  @id @default(cuid())
+  title       String
+  subject     String
+  url         String                  @unique
+  type        KnowledgeResourceType
+  description String
+  priority    Int                     @default(0)
+  isActive    Boolean                 @default(true)
+  flags       KnowledgeResourceFlag[]
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  @@index([isActive, priority])
+  @@index([subject])
+}
+
+model KnowledgeResourceFlag {
+  resourceId String
+  flagId     String
+  resource   KnowledgeResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  flag       KnowledgeFlag     @relation(fields: [flagId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, flagId])
+  @@index([flagId])
 }
