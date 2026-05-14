@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 export function AdminLoginForm() {
@@ -38,6 +39,15 @@ export function AdminLoginForm() {
 
   return (
     <form onSubmit={submit} className="devup-panel max-w-xl p-6">
+      <p className="mb-5 text-sm leading-6 text-slate-400">
+        Voce tambem pode entrar pelo magic link usando um usuario com role ADMIN no banco.
+      </p>
+      <Link
+        href="/login"
+        className="mb-6 inline-flex min-h-11 items-center rounded-full bg-blue-950 px-5 text-sm font-semibold text-skyGlow ring-1 ring-blue-800/40 transition hover:bg-blue-900"
+      >
+        Entrar com magic link
+      </Link>
       <label htmlFor="admin-key" className="mb-2 block text-sm font-medium text-slate-200">
         Chave de administrador
       </label>

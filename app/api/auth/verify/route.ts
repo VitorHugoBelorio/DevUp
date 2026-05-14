@@ -13,7 +13,8 @@ export async function GET(request: Request) {
 
   try {
     const session = await consumeMagicLink(token);
-    const response = NextResponse.redirect(new URL("/diagnostico", url.origin));
+    const redirectPath = session.user.role === "ADMIN" ? "/admin" : "/diagnostico";
+    const response = NextResponse.redirect(new URL(redirectPath, url.origin));
 
     response.cookies.set(userSessionCookieName, session.sessionToken, {
       httpOnly: true,

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { recordAccessEvent } from "@/lib/services/accessControlService";
 import { sendMagicLinkEmail } from "@/lib/services/emailService";
 import { normalizeText } from "@/lib/utils/text";
 
@@ -18,9 +19,10 @@ type AuthUser = {
   email: string;
   emailVerifiedAt: Date | null;
   role: "USER" | "ADMIN";
+  status: "ACTIVE" | "BLOCKED";
 };
 
-function normalizeEmail(email: string): string {
+export function normalizeEmail(email: string): string {
   return normalizeText(email).toLowerCase();
 }
 
@@ -71,6 +73,13 @@ async function createMagicLinkToken(input: {
     purpose: input.purpose
   });
 
+  await recordAccessEvent({
+    userId: input.userId,
+    email: input.email,
+    type: "MAGIC_LINK_SENT",
+    metadata: { purpose: input.purpose }
+  });
+
   return {
     magicLink,
     devMagicLink: isDevLinkEnabled() ? magicLink : undefined
@@ -80,7 +89,7 @@ async function createMagicLinkToken(input: {
 export async function requestLoginMagicLink(email: string, origin?: string): Promise<{
   ok: boolean;
   devMagicLink?: string;
-  reason?: "USER_NOT_FOUND";
+  reason?: "USER_NOT_FOUND" | "USER_BLOCKED";
 }> {
   const normalizedEmail = normalizeEmail(email);
   const user = await prisma.user.findUnique({
@@ -93,6 +102,26 @@ export async function requestLoginMagicLink(email: string, origin?: string): Pro
       reason: "USER_NOT_FOUND"
     };
   }
+
+  if (user.status === "BLOCKED") {
+    await recordAccessEvent({
+      userId: user.id,
+      email: normalizedEmail,
+      type: "LOGIN_BLOCKED",
+      metadata: { reason: "blocked_user" }
+    });
+
+    return {
+      ok: false,
+      reason: "USER_BLOCKED"
+    };
+  }
+
+  await recordAccessEvent({
+    userId: user.id,
+    email: normalizedEmail,
+    type: "MAGIC_LINK_REQUESTED"
+  });
 
   const purpose = user.emailVerifiedAt ? "LOGIN" : "VERIFY_EMAIL";
   const token = await createMagicLinkToken({
@@ -121,6 +150,15 @@ export async function registerWithMagicLink(input: {
   });
 
   if (existingUser?.emailVerifiedAt) {
+    if (existingUser.status === "BLOCKED") {
+      await recordAccessEvent({
+        userId: existingUser.id,
+        email,
+        type: "LOGIN_BLOCKED",
+        metadata: { reason: "blocked_user_register_attempt" }
+      });
+    }
+
     return {
       ok: false,
       reason: "USER_ALREADY_EXISTS"
@@ -139,6 +177,13 @@ export async function registerWithMagicLink(input: {
         }
       });
 
+  await recordAccessEvent({
+    userId: user.id,
+    email,
+    type: "MAGIC_LINK_REQUESTED",
+    metadata: { flow: "register" }
+  });
+
   const token = await createMagicLinkToken({
     email,
     userId: user.id,
@@ -156,6 +201,7 @@ export async function registerWithMagicLink(input: {
 export async function consumeMagicLink(rawToken: string): Promise<{
   sessionToken: string;
   sessionExpiresAt: Date;
+  user: AuthUser;
 }> {
   const tokenHash = hashToken(rawToken);
   const token = await prisma.magicLinkToken.findUnique({
@@ -167,17 +213,28 @@ export async function consumeMagicLink(rawToken: string): Promise<{
     throw new Error("Magic link invalido ou expirado.");
   }
 
+  if (token.user.status === "BLOCKED") {
+    await recordAccessEvent({
+      userId: token.user.id,
+      email: token.user.email,
+      type: "LOGIN_BLOCKED",
+      metadata: { reason: "blocked_user_magic_link" }
+    });
+
+    throw new Error("Usuario bloqueado.");
+  }
+
   await prisma.magicLinkToken.update({
     where: { id: token.id },
     data: { consumedAt: new Date() }
   });
 
-  if (!token.user.emailVerifiedAt) {
-    await prisma.user.update({
-      where: { id: token.user.id },
-      data: { emailVerifiedAt: new Date() }
-    });
-  }
+  const user = await prisma.user.update({
+    where: { id: token.user.id },
+    data: {
+      emailVerifiedAt: token.user.emailVerifiedAt ?? new Date()
+    }
+  });
 
   const sessionToken = createRawToken();
   const sessionExpiresAt = new Date(Date.now() + sessionTtlDays * 24 * 60 * 60 * 1000);
@@ -190,9 +247,16 @@ export async function consumeMagicLink(rawToken: string): Promise<{
     }
   });
 
+  await recordAccessEvent({
+    userId: user.id,
+    email: user.email,
+    type: "LOGIN_SUCCESS"
+  });
+
   return {
     sessionToken,
-    sessionExpiresAt
+    sessionExpiresAt,
+    user
   };
 }
 
@@ -211,6 +275,10 @@ export async function getCurrentUserFromCookies(cookies: CookieReader): Promise<
     .catch(() => null);
 
   if (!session || session.expiresAt <= new Date()) {
+    return null;
+  }
+
+  if (session.user.status === "BLOCKED") {
     return null;
   }
 
@@ -240,6 +308,10 @@ export async function getCurrentUserFromRequest(request: Request): Promise<AuthU
     return null;
   }
 
+  if (session.user.status === "BLOCKED") {
+    return null;
+  }
+
   return session.user;
 }
 
@@ -248,9 +320,24 @@ export async function revokeSession(rawToken: string | undefined): Promise<void>
     return;
   }
 
+  const session = await prisma.userSession.findUnique({
+    where: {
+      tokenHash: hashToken(rawToken)
+    },
+    include: { user: true }
+  });
+
   await prisma.userSession.deleteMany({
     where: {
       tokenHash: hashToken(rawToken)
     }
   });
+
+  if (session?.user) {
+    await recordAccessEvent({
+      userId: session.user.id,
+      email: session.user.email,
+      type: "LOGOUT"
+    });
+  }
 }

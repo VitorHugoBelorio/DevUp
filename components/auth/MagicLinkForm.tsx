@@ -5,6 +5,7 @@ import { useState } from "react";
 type Mode = "login" | "register";
 
 type ApiResponse = {
+  error?: string;
   message?: string;
   devMagicLink?: string;
 };
@@ -41,6 +42,11 @@ export function MagicLinkForm({
         body: JSON.stringify(payload)
       });
       const data = (await response.json()) as ApiResponse;
+
+      if (!response.ok) {
+        setMessage(data.message ?? "Nao foi possivel enviar o magic link.");
+        return;
+      }
 
       setMessage(data.message ?? "Verifique seu e-mail para continuar.");
 

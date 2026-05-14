@@ -5,6 +5,13 @@ type MagicLinkEmailInput = {
   purpose: "LOGIN" | "VERIFY_EMAIL";
 };
 
+export class EmailDeliveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmailDeliveryError";
+  }
+}
+
 function getSubject(purpose: MagicLinkEmailInput["purpose"]): string {
   return purpose === "VERIFY_EMAIL" ? "Verifique seu e-mail no DevUp" : "Seu link de acesso ao DevUp";
 }
@@ -73,12 +80,12 @@ function buildHtml(input: MagicLinkEmailInput): string {
 }
 
 async function sendWithBrevo(input: MagicLinkEmailInput): Promise<void> {
-  const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL;
-  const senderName = process.env.BREVO_SENDER_NAME || "DevUp";
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
+  const senderName = process.env.BREVO_SENDER_NAME?.trim() || "DevUp";
 
   if (!apiKey || !senderEmail) {
-    throw new Error("BREVO_API_KEY e BREVO_SENDER_EMAIL precisam estar configurados.");
+    throw new EmailDeliveryError("BREVO_API_KEY e BREVO_SENDER_EMAIL precisam estar configurados.");
   }
 
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -107,12 +114,21 @@ async function sendWithBrevo(input: MagicLinkEmailInput): Promise<void> {
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Falha ao enviar e-mail pela Brevo: ${response.status} ${body}`);
+    let detail = body;
+
+    try {
+      const parsed = JSON.parse(body) as { message?: string; code?: string };
+      detail = [parsed.code, parsed.message].filter(Boolean).join(": ") || body;
+    } catch {
+      detail = body;
+    }
+
+    throw new EmailDeliveryError(`Brevo respondeu ${response.status}. ${detail}`);
   }
 }
 
 export async function sendMagicLinkEmail(input: MagicLinkEmailInput): Promise<void> {
-  const mode = process.env.EMAIL_DELIVERY_MODE ?? "console";
+  const mode = (process.env.EMAIL_DELIVERY_MODE ?? "console").trim().toLowerCase();
 
   if (mode === "brevo") {
     await sendWithBrevo(input);

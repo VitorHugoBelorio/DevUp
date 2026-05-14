@@ -1,9 +1,14 @@
 import crypto from "node:crypto";
+import { getCurrentUserFromCookies, getCurrentUserFromRequest } from "@/lib/services/userAuth";
 
 export const adminCookieName = "devup_admin_session";
 
+type CookieReader = {
+  get(name: string): { value: string } | undefined;
+};
+
 function getAdminKey(): string | null {
-  return process.env.ADMIN_ACCESS_KEY?.trim() || null;
+  return process.env.ROOT_ACCESS_KEY?.trim() || process.env.ADMIN_ACCESS_KEY?.trim() || null;
 }
 
 function getSessionSecret(): string {
@@ -33,12 +38,21 @@ export function isAdminKeyValid(value: string): boolean {
   return received.length === expected.length && crypto.timingSafeEqual(received, expected);
 }
 
-export function hasAdminCookie(cookies: { get(name: string): { value: string } | undefined }): boolean {
+export function hasAdminKeyCookie(cookies: CookieReader): boolean {
   const token = cookies.get(adminCookieName)?.value;
   return Boolean(token && token === createAdminSessionToken());
 }
 
-export function hasAdminRequestAccess(request: Request): boolean {
+export async function hasAdminAccessFromCookies(cookies: CookieReader): Promise<boolean> {
+  if (hasAdminKeyCookie(cookies)) {
+    return true;
+  }
+
+  const user = await getCurrentUserFromCookies(cookies);
+  return user?.role === "ADMIN";
+}
+
+export async function hasAdminRequestAccess(request: Request): Promise<boolean> {
   const cookieHeader = request.headers.get("cookie") ?? "";
   const token = cookieHeader
     .split(";")
@@ -46,5 +60,10 @@ export function hasAdminRequestAccess(request: Request): boolean {
     .find((item) => item.startsWith(`${adminCookieName}=`))
     ?.split("=")[1];
 
-  return Boolean(token && decodeURIComponent(token) === createAdminSessionToken());
+  if (token && decodeURIComponent(token) === createAdminSessionToken()) {
+    return true;
+  }
+
+  const user = await getCurrentUserFromRequest(request);
+  return user?.role === "ADMIN";
 }
