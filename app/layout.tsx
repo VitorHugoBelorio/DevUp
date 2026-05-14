@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { BinaryBackground } from "@/components/BinaryBackground";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +14,6 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
-        <BinaryBackground />
         {children}
       </body>
     </html>
