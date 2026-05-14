@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { questionTypes, recommendationTypes } from "@/types/diagnostic";
+import { careerAreaOptions, careerAreaSlugs, questionTypes, recommendationTypes } from "@/types/diagnostic";
 import type {
+  AreaPreference,
   DiagnosticAnswer,
   DiagnosticAnswerInput,
   DiagnosticAnswerValue,
@@ -17,6 +18,7 @@ export const questionOptionSchema = z.object({
 
 export const diagnosticQuestionSchema = z.object({
   id: z.string().min(1),
+  formId: z.string().min(1),
   key: z
     .string()
     .min(2)
@@ -40,6 +42,21 @@ const answerValueSchema = z.union([
   z.array(z.string())
 ]) satisfies z.ZodType<DiagnosticAnswerValue>;
 
+const areaLabelBySlug = new Map(careerAreaOptions.map((area) => [area.value, area.label]));
+
+export const areaPreferenceInputSchema = z.object({
+  area: z.enum(careerAreaSlugs),
+  percentage: z.coerce.number().min(0).max(100)
+});
+
+const areaPreferencesPayloadSchema = z
+  .array(areaPreferenceInputSchema)
+  .default([])
+  .refine(
+    (preferences) => preferences.reduce((total, item) => total + item.percentage, 0) <= 100,
+    "O mapa de foco deve somar no maximo 100%."
+  );
+
 export const diagnosticAnswerInputSchema = z.object({
   question_id: z.string().min(1),
   key: z.string().min(2).max(80),
@@ -47,7 +64,8 @@ export const diagnosticAnswerInputSchema = z.object({
 }) satisfies z.ZodType<DiagnosticAnswerInput>;
 
 export const diagnosticInputPayloadSchema = z.object({
-  answers: z.array(diagnosticAnswerInputSchema).min(1)
+  answers: z.array(diagnosticAnswerInputSchema).min(1),
+  area_preferences: areaPreferencesPayloadSchema.optional()
 });
 
 export const diagnosticResultSchema = z.object({
@@ -75,6 +93,8 @@ export const diagnosticResultSchema = z.object({
       z.object({
         title: z.string().min(1),
         type: z.enum(recommendationTypes),
+        url: z.string().url().nullable(),
+        source_id: z.string().min(1).nullable(),
         reason: z.string().min(1)
       })
     )
@@ -180,13 +200,37 @@ function validateAnswer(question: DiagnosticQuestion, rawValue: DiagnosticAnswer
   return Array.isArray(value) ? value.join(", ") : String(value);
 }
 
+function normalizeAreaPreferences(payloadPreferences: unknown): AreaPreference[] {
+  const parsed = areaPreferencesPayloadSchema.parse(payloadPreferences ?? []);
+  const uniqueByArea = new Map<AreaPreference["area"], number>();
+
+  for (const preference of parsed) {
+    uniqueByArea.set(preference.area, Math.max(uniqueByArea.get(preference.area) ?? 0, preference.percentage));
+  }
+
+  return Array.from(uniqueByArea.entries())
+    .filter(([, percentage]) => percentage > 0)
+    .sort((left, right) => right[1] - left[1])
+    .map(([area, percentage], index) => ({
+      area,
+      label: areaLabelBySlug.get(area) ?? area,
+      percentage: Math.round(percentage),
+      priority: index === 0 ? "primary" : index === 1 ? "secondary" : "support"
+    }));
+}
+
 export function parseQuestionOptions(options: unknown): QuestionOption[] {
   const parsed = z.array(questionOptionSchema).safeParse(options ?? []);
   return parsed.success ? parsed.data : [];
 }
 
-export function parseDiagnosticInput(payload: unknown, questions: DiagnosticQuestion[]): DiagnosticInput {
+export function parseDiagnosticInput(
+  payload: unknown,
+  questions: DiagnosticQuestion[],
+  form?: { id: string; slug: string }
+): DiagnosticInput {
   const parsed = diagnosticInputPayloadSchema.parse(payload);
+  const areaPreferences = normalizeAreaPreferences(parsed.area_preferences);
   const activeById = new Map(questions.filter((question) => question.isActive).map((question) => [question.id, question]));
   const answersByQuestion = new Map(parsed.answers.map((answer) => [answer.question_id, answer]));
 
@@ -227,5 +271,11 @@ export function parseDiagnosticInput(payload: unknown, questions: DiagnosticQues
     })
     .filter((answer): answer is DiagnosticAnswer => Boolean(answer));
 
-  return { answers };
+  return {
+    form_id: form?.id ?? questions[0]?.formId ?? "unknown-form",
+    form_slug: form?.slug ?? "unknown",
+    answers,
+    area_preferences: areaPreferences,
+    knowledge_resources: []
+  };
 }

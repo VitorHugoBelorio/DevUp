@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasAdminRequestAccess } from "@/lib/services/adminAuth";
-import { createQuestion, getAllQuestions } from "@/lib/services/questionService";
+import { createForm, getAllFormsWithQuestions } from "@/lib/services/questionService";
 
 export const runtime = "nodejs";
 
@@ -8,7 +8,7 @@ function unauthorized() {
   return NextResponse.json(
     {
       error: "UNAUTHORIZED",
-      message: "Acesso de administrador necessario."
+      message: "Acesso root necessario."
     },
     { status: 401 }
   );
@@ -19,9 +19,8 @@ export async function GET(request: Request) {
     return unauthorized();
   }
 
-  const { searchParams } = new URL(request.url);
-  const questions = await getAllQuestions(searchParams.get("formId") ?? undefined);
-  return NextResponse.json({ questions });
+  const forms = await getAllFormsWithQuestions();
+  return NextResponse.json({ forms });
 }
 
 export async function POST(request: Request) {
@@ -30,13 +29,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const question = await createQuestion(await request.json());
-    return NextResponse.json({ question }, { status: 201 });
+    const form = await createForm(await request.json());
+    return NextResponse.json({ form }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
       {
-        error: "INVALID_QUESTION",
-        message: error instanceof Error ? error.message : "Pergunta invalida."
+        error: "INVALID_FORM",
+        message: error instanceof Error ? error.message : "Formulario invalido."
       },
       { status: 400 }
     );

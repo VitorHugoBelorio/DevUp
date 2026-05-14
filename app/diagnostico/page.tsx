@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { DiagnosticForm } from "@/components/DiagnosticForm";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { getCurrentUserFromCookies } from "@/lib/services/userAuth";
-import { getActiveQuestions } from "@/lib/services/questionService";
+import { getActiveDiagnosticForm } from "@/lib/services/questionService";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,8 @@ export default async function DiagnosticPage() {
     redirect("/login?next=/diagnostico");
   }
 
-  const questions = await getActiveQuestions();
+  const form = await getActiveDiagnosticForm();
+  const questions = form.questions;
   const steps = Array.from(new Set(questions.filter((question) => question.isActive).map((question) => question.step)));
 
   return (
@@ -34,10 +35,11 @@ export default async function DiagnosticPage() {
         <header className="max-w-4xl py-8 sm:py-10">
           <p className="text-xs font-normal uppercase tracking-[0.18em] text-slate-500">diagnostico guiado</p>
           <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight tracking-[0.01em] text-white sm:text-6xl">
-            Clareza para decidir o que estudar agora.
+            {form.name}
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-slate-400">
-            O DevUp organiza suas respostas, identifica seu momento e transforma o diagnostico em um plano de estudo acionavel.
+            {form.description ??
+              "O DevUp organiza suas respostas, identifica seu momento e transforma o diagnostico em um plano de estudo acionavel."}
           </p>
         </header>
 
@@ -62,7 +64,7 @@ export default async function DiagnosticPage() {
             </div>
           </aside>
 
-          <DiagnosticForm questions={questions} />
+          <DiagnosticForm formName={form.name} questions={questions} />
         </section>
       </div>
     </main>

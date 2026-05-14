@@ -25,6 +25,8 @@ const validResult: DiagnosticResult = {
     {
       title: "MDN JavaScript Guide",
       type: "documentation",
+      url: "https://developer.mozilla.org/pt-BR/docs/Web/JavaScript",
+      source_id: "source_mdn_js",
       reason: "Boa referencia para fundamentos."
     }
   ],
@@ -55,8 +57,76 @@ describe("diagnostic input schema", () => {
     );
 
     expect(parsed.answers).toHaveLength(defaultQuestions.length);
+    expect(parsed.area_preferences).toEqual([]);
+    expect(parsed.knowledge_resources).toEqual([]);
     expect(parsed.answers.find((answer) => answer.key === "clarity_score")?.value).toBe(7);
     expect(parsed.answers.find((answer) => answer.key === "technology_to_master")?.value).toBe("React e JavaScript");
+  });
+
+  it("normalizes career focus preferences with priorities", () => {
+    const parsed = parseDiagnosticInput(
+      {
+        area_preferences: [
+          { area: "devops", percentage: 30 },
+          { area: "backend", percentage: 70 },
+          { area: "frontend", percentage: 0 }
+        ],
+        answers: defaultQuestions.map((question) => ({
+          question_id: question.id,
+          key: question.key,
+          value:
+            question.type === "number" || question.type === "scale"
+              ? "7"
+              : question.type === "single_select"
+                ? question.options[0]?.value
+                : question.type === "multi_select"
+                  ? [question.options[0]?.value].filter(Boolean)
+                  : "ok"
+        }))
+      },
+      defaultQuestions
+    );
+
+    expect(parsed.area_preferences).toEqual([
+      {
+        area: "backend",
+        label: "Backend",
+        percentage: 70,
+        priority: "primary"
+      },
+      {
+        area: "devops",
+        label: "DevOps",
+        percentage: 30,
+        priority: "secondary"
+      }
+    ]);
+  });
+
+  it("rejects career focus preferences above 100 percent", () => {
+    expect(() =>
+      parseDiagnosticInput(
+        {
+          area_preferences: [
+            { area: "backend", percentage: 80 },
+            { area: "devops", percentage: 40 }
+          ],
+          answers: defaultQuestions.map((question) => ({
+            question_id: question.id,
+            key: question.key,
+            value:
+              question.type === "number" || question.type === "scale"
+                ? "7"
+                : question.type === "single_select"
+                  ? question.options[0]?.value
+                  : question.type === "multi_select"
+                    ? [question.options[0]?.value].filter(Boolean)
+                    : "ok"
+          }))
+        },
+        defaultQuestions
+      )
+    ).toThrow();
   });
 
   it("rejects invalid select values", () => {
@@ -113,8 +183,10 @@ describe("diagnostic result schema", () => {
       ...validResult,
       recommendations: [
         {
-          title: "Video qualquer",
-          type: "video",
+          title: "Podcast qualquer",
+          type: "podcast",
+          url: null,
+          source_id: null,
           reason: "Nao faz parte do contrato."
         }
       ]

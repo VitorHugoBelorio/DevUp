@@ -1,10 +1,38 @@
 import { prisma } from "@/lib/prisma";
 import { diagnosticQuestionSchema, parseQuestionOptions, questionOptionSchema } from "@/lib/services/diagnosticSchemas";
-import type { DiagnosticQuestion, QuestionOption, QuestionType } from "@/types/diagnostic";
+import type {
+  DiagnosticFormConfig,
+  DiagnosticFormWithQuestions,
+  DiagnosticQuestion,
+  QuestionOption,
+  QuestionType
+} from "@/types/diagnostic";
 import { normalizeText, toQuestionKey, uniqueStable } from "@/lib/utils/text";
+
+export const defaultDiagnosticFormId = "default-diagnostic-form";
+export const defaultDiagnosticFormSlug = "devup-diagnostic";
+
+export const defaultDiagnosticForm: DiagnosticFormConfig = {
+  id: defaultDiagnosticFormId,
+  slug: defaultDiagnosticFormSlug,
+  name: "Diagnostico DevUp",
+  description: "Formulario principal para diagnostico, direcionamento e plano de estudos.",
+  isActive: true,
+  isArchived: false
+};
+
+type FormRecord = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  isArchived: boolean;
+};
 
 type QuestionRecord = {
   id: string;
+  formId: string;
   key: string;
   label: string;
   description: string | null;
@@ -20,6 +48,7 @@ type QuestionRecord = {
 
 export type QuestionUpsertPayload = {
   id?: string;
+  formId?: string;
   key: string;
   label: string;
   description?: string | null;
@@ -33,7 +62,9 @@ export type QuestionUpsertPayload = {
   isActive: boolean;
 };
 
-export const defaultQuestions: DiagnosticQuestion[] = [
+type QuestionTemplate = Omit<DiagnosticQuestion, "formId">;
+
+const defaultQuestionTemplates: QuestionTemplate[] = [
   {
     id: "target_area",
     key: "target_area",
@@ -411,6 +442,11 @@ export const defaultQuestions: DiagnosticQuestion[] = [
   }
 ];
 
+export const defaultQuestions: DiagnosticQuestion[] = defaultQuestionTemplates.map((question) => ({
+  ...question,
+  formId: defaultDiagnosticFormId
+}));
+
 const legacyDefaultKeys = [
   "current_stack",
   "experience_time",
@@ -429,33 +465,117 @@ function toQuestion(record: QuestionRecord): DiagnosticQuestion {
   });
 }
 
-export async function getActiveQuestions(): Promise<DiagnosticQuestion[]> {
+function toForm(record: FormRecord): DiagnosticFormConfig {
+  return {
+    id: record.id,
+    slug: record.slug,
+    name: record.name,
+    description: record.description,
+    isActive: record.isActive,
+    isArchived: record.isArchived
+  };
+}
+
+function toFormWithQuestions(record: FormRecord & { questions: QuestionRecord[] }): DiagnosticFormWithQuestions {
+  return {
+    ...toForm(record),
+    questions: record.questions.map(toQuestion)
+  };
+}
+
+export async function getActiveDiagnosticForm(): Promise<DiagnosticFormWithQuestions> {
   try {
     await ensureDefaultQuestions();
 
-    const records = await prisma.diagnosticQuestion.findMany({
-      where: { isActive: true },
-      orderBy: [{ order: "asc" }, { createdAt: "asc" }]
+    const record = await prisma.diagnosticForm.findFirst({
+      where: {
+        isActive: true,
+        isArchived: false
+      },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        questions: {
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }]
+        }
+      }
     });
 
-    return records.length > 0 ? records.map(toQuestion) : defaultQuestions;
+    if (record) {
+      return toFormWithQuestions(record);
+    }
+
+    return {
+      ...defaultDiagnosticForm,
+      questions: defaultQuestions
+    };
   } catch {
-    return defaultQuestions;
+    return {
+      ...defaultDiagnosticForm,
+      questions: defaultQuestions
+    };
   }
 }
 
-export async function getAllQuestions(): Promise<DiagnosticQuestion[]> {
+export async function getActiveQuestions(): Promise<DiagnosticQuestion[]> {
+  const form = await getActiveDiagnosticForm();
+  return form.questions.length > 0 ? form.questions : defaultQuestions;
+}
+
+export async function getAllFormsWithQuestions(): Promise<DiagnosticFormWithQuestions[]> {
+  await ensureDefaultQuestions();
+
+  const records = await prisma.diagnosticForm.findMany({
+    where: { isArchived: false },
+    orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
+    include: {
+      questions: {
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }]
+      }
+    }
+  });
+
+  return records.map(toFormWithQuestions);
+}
+
+export async function getAllQuestions(formId?: string): Promise<DiagnosticQuestion[]> {
   await ensureDefaultQuestions();
 
   const records = await prisma.diagnosticQuestion.findMany({
-    orderBy: [{ order: "asc" }, { createdAt: "asc" }]
+    where: formId ? { formId } : undefined,
+    orderBy: [{ formId: "asc" }, { order: "asc" }, { createdAt: "asc" }]
   });
 
   return records.map(toQuestion);
 }
 
 export async function ensureDefaultQuestions(): Promise<void> {
+  await prisma.diagnosticForm.upsert({
+    where: { id: defaultDiagnosticFormId },
+    create: defaultDiagnosticForm,
+    update: {
+      slug: defaultDiagnosticForm.slug,
+      name: defaultDiagnosticForm.name,
+      description: defaultDiagnosticForm.description,
+      isArchived: false
+    }
+  });
+  const activeForms = await prisma.diagnosticForm.count({
+    where: {
+      isActive: true,
+      isArchived: false
+    }
+  });
+
+  if (activeForms === 0) {
+    await prisma.diagnosticForm.update({
+      where: { id: defaultDiagnosticFormId },
+      data: { isActive: true }
+    });
+  }
+
   const existingQuestions = await prisma.diagnosticQuestion.findMany({
+    where: { formId: defaultDiagnosticFormId },
     select: { key: true }
   });
   const existingKeys = existingQuestions.map((question) => question.key);
@@ -487,6 +607,135 @@ export async function ensureDefaultQuestions(): Promise<void> {
   });
 }
 
+export function normalizeFormPayload(payload: unknown): Omit<DiagnosticFormConfig, "id"> & { id?: string } {
+  const raw = payload as Partial<DiagnosticFormConfig>;
+  const name = normalizeText(String(raw.name ?? ""));
+  const slug = toQuestionKey(String(raw.slug || raw.name || ""));
+
+  if (!name) {
+    throw new Error("Nome do formulario e obrigatorio.");
+  }
+
+  if (!slug) {
+    throw new Error("Slug do formulario e obrigatorio.");
+  }
+
+  return {
+    id: raw.id,
+    slug,
+    name,
+    description: raw.description ? normalizeText(raw.description) : null,
+    isActive: Boolean(raw.isActive),
+    isArchived: Boolean(raw.isArchived)
+  };
+}
+
+export async function createForm(payload: unknown): Promise<DiagnosticFormWithQuestions> {
+  const form = normalizeFormPayload(payload);
+
+  if (form.isActive) {
+    await prisma.diagnosticForm.updateMany({
+      where: { isActive: true },
+      data: { isActive: false }
+    });
+  }
+
+  const hasAnyForm = await prisma.diagnosticForm.count({
+    where: { isArchived: false }
+  });
+
+  const record = await prisma.diagnosticForm.create({
+    data: {
+      slug: form.slug,
+      name: form.name,
+      description: form.description,
+      isActive: form.isActive || hasAnyForm === 0,
+      isArchived: false
+    },
+    include: {
+      questions: {
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }]
+      }
+    }
+  });
+
+  return toFormWithQuestions(record);
+}
+
+export async function updateForm(id: string, payload: unknown): Promise<DiagnosticFormWithQuestions> {
+  const form = normalizeFormPayload({ ...(payload as object), id });
+
+  if (form.isActive) {
+    await prisma.diagnosticForm.updateMany({
+      where: { isActive: true, id: { not: id } },
+      data: { isActive: false }
+    });
+  }
+
+  const record = await prisma.diagnosticForm.update({
+    where: { id },
+    data: {
+      slug: form.slug,
+      name: form.name,
+      description: form.description,
+      isActive: form.isActive,
+      isArchived: form.isArchived
+    },
+    include: {
+      questions: {
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }]
+      }
+    }
+  });
+
+  return toFormWithQuestions(record);
+}
+
+export async function activateForm(id: string): Promise<DiagnosticFormWithQuestions> {
+  await prisma.diagnosticForm.updateMany({
+    where: { isActive: true },
+    data: { isActive: false }
+  });
+
+  const record = await prisma.diagnosticForm.update({
+    where: { id },
+    data: {
+      isActive: true,
+      isArchived: false
+    },
+    include: {
+      questions: {
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }]
+      }
+    }
+  });
+
+  return toFormWithQuestions(record);
+}
+
+export async function deleteForm(id: string): Promise<void> {
+  const forms = await prisma.diagnosticForm.findMany({
+    where: { isArchived: false },
+    select: { id: true, isActive: true },
+    orderBy: { updatedAt: "desc" }
+  });
+
+  if (forms.length <= 1) {
+    throw new Error("Mantenha pelo menos um formulario disponivel.");
+  }
+
+  const deleted = forms.find((form) => form.id === id);
+  await prisma.diagnosticForm.delete({ where: { id } });
+
+  if (deleted?.isActive) {
+    const nextForm = forms.find((form) => form.id !== id);
+
+    if (nextForm) {
+      await activateForm(nextForm.id);
+    }
+  }
+}
+
 export function normalizeQuestionPayload(payload: unknown): QuestionUpsertPayload {
   const raw = payload as Partial<QuestionUpsertPayload>;
   const options = questionOptionSchema.array().parse(raw.options ?? []);
@@ -510,6 +759,7 @@ export function normalizeQuestionPayload(payload: unknown): QuestionUpsertPayloa
 
   return {
     id: raw.id,
+    formId: raw.formId || defaultDiagnosticFormId,
     key,
     label: normalizeText(String(raw.label ?? "")),
     description: raw.description ? normalizeText(raw.description) : null,
@@ -528,6 +778,7 @@ export async function createQuestion(payload: unknown): Promise<DiagnosticQuesti
   const question = normalizeQuestionPayload(payload);
   const record = await prisma.diagnosticQuestion.create({
     data: {
+      formId: question.formId ?? defaultDiagnosticFormId,
       key: question.key,
       label: question.label,
       description: question.description,
@@ -550,6 +801,7 @@ export async function updateQuestion(id: string, payload: unknown): Promise<Diag
   const record = await prisma.diagnosticQuestion.update({
     where: { id },
     data: {
+      formId: question.formId ?? defaultDiagnosticFormId,
       key: question.key,
       label: question.label,
       description: question.description,

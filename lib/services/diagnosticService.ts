@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { generateDiagnosticPlan } from "@/lib/ai/generateDiagnosticPlan";
 import { diagnosticResultSchema, parseDiagnosticInput } from "@/lib/services/diagnosticSchemas";
-import { getActiveQuestions } from "@/lib/services/questionService";
-import type { DiagnosticInput, DiagnosticResult, StoredDiagnostic } from "@/types/diagnostic";
+import { getRelevantKnowledgeResources } from "@/lib/services/knowledgeService";
+import { getActiveDiagnosticForm } from "@/lib/services/questionService";
+import type { DiagnosticFormConfig, DiagnosticInput, DiagnosticResult, StoredDiagnostic } from "@/types/diagnostic";
 
 function toStoredDiagnostic(record: {
   id: string;
+  formSnapshot: unknown;
   input: unknown;
   questionSnapshot: unknown;
   aiResult: unknown;
@@ -16,6 +18,7 @@ function toStoredDiagnostic(record: {
   return {
     id: record.id,
     input: record.input as DiagnosticInput,
+    form: record.formSnapshot as DiagnosticFormConfig | null,
     questions: record.questionSnapshot as StoredDiagnostic["questions"],
     result: diagnosticResultSchema.parse(record.aiResult),
     aiModel: record.aiModel,
@@ -24,15 +27,25 @@ function toStoredDiagnostic(record: {
 }
 
 export async function createDiagnostic(payload: unknown, userId?: string): Promise<StoredDiagnostic> {
-  const questions = await getActiveQuestions();
-  const input = parseDiagnosticInput(payload, questions);
+  const form = await getActiveDiagnosticForm();
+  const input = parseDiagnosticInput(payload, form.questions, form);
+  input.knowledge_resources = await getRelevantKnowledgeResources(input);
   const generated = await generateDiagnosticPlan(input);
 
   const record = await prisma.diagnostic.create({
     data: {
       userId,
+      formId: form.id,
       input,
-      questionSnapshot: questions,
+      formSnapshot: {
+        id: form.id,
+        slug: form.slug,
+        name: form.name,
+        description: form.description,
+        isActive: form.isActive,
+        isArchived: form.isArchived
+      },
+      questionSnapshot: form.questions,
       aiResult: generated.result,
       aiModel: generated.model
     }
