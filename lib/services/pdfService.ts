@@ -36,6 +36,13 @@ export async function renderDiagnosticPdf(diagnostic: StoredDiagnostic): Promise
   doc.moveDown(0.8);
   doc.fontSize(9).fillColor("#64748b").text(`Gerado em ${new Date(diagnostic.createdAt).toLocaleDateString("pt-BR")}`);
 
+  if (diagnostic.input.area_preferences?.length) {
+    addSection(doc, {
+      title: "Mapa de foco",
+      items: diagnostic.input.area_preferences.map((item) => `${item.label}: ${item.percentage}% (${item.priority})`)
+    });
+  }
+
   addSection(doc, {
     title: "Diagnostico",
     items: [
@@ -67,7 +74,7 @@ export async function renderDiagnosticPdf(diagnostic: StoredDiagnostic): Promise
   addSection(doc, {
     title: "Recomendacoes",
     items: diagnostic.result.recommendations.map(
-      (item) => `${item.title} (${item.type}): ${item.reason}`
+      (item) => `${item.title} (${item.type}): ${item.reason}${item.url ? ` - ${item.url}` : ""}`
     )
   });
 

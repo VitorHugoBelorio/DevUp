@@ -47,8 +47,43 @@ function Direction({ direction }: { direction: DiagnosticResult["direction"] }) 
   );
 }
 
+function FocusMap({ preferences }: { preferences: StoredDiagnostic["input"]["area_preferences"] }) {
+  if (!preferences?.length) {
+    return null;
+  }
+
+  return (
+    <Section title="Mapa de foco">
+      <div className="grid gap-4 md:grid-cols-3">
+        {preferences.map((preference) => (
+          <article key={preference.area} className="rounded-2xl bg-slate-950/55 p-5 transition duration-300 hover:bg-hover">
+            <p className="text-xs font-normal uppercase tracking-[0.14em] text-skyGlow">
+              {preference.priority === "primary"
+                ? "trilha principal"
+                : preference.priority === "secondary"
+                  ? "trilha secundaria"
+                  : "apoio"}
+            </p>
+            <div className="mt-3 flex items-end justify-between gap-4">
+              <h3 className="text-lg font-semibold text-white">{preference.label}</h3>
+              <span className="text-2xl font-semibold text-white">{preference.percentage}%</span>
+            </div>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-900">
+              <div
+                className="h-full rounded-full bg-cyanGlow shadow-glow"
+                style={{ width: `${preference.percentage}%` }}
+              />
+            </div>
+          </article>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 export function ResultView({ diagnostic }: { diagnostic: StoredDiagnostic }) {
   const result = diagnostic.result;
+  const preferences = diagnostic.input.area_preferences ?? [];
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-6 text-slate-100 sm:px-6 lg:px-10">
@@ -74,6 +109,8 @@ export function ResultView({ diagnostic }: { diagnostic: StoredDiagnostic }) {
         </header>
 
         <section className="devup-panel p-4 sm:p-6">
+          <FocusMap preferences={preferences} />
+
           <Section title="Diagnostico">
             <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr_0.9fr]">
               <div className="rounded-2xl bg-blue-950/40 p-5 ring-1 ring-blue-900/40">
@@ -129,6 +166,16 @@ export function ResultView({ diagnostic }: { diagnostic: StoredDiagnostic }) {
                   </p>
                   <h3 className="mt-3 text-lg font-semibold text-white">{recommendation.title}</h3>
                   <p className="mt-3 text-sm leading-6 text-slate-300">{recommendation.reason}</p>
+                  {recommendation.url && (
+                    <a
+                      href={recommendation.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-4 inline-flex min-h-10 items-center rounded-full bg-blue-950 px-4 text-xs font-semibold text-skyGlow ring-1 ring-blue-800/40 transition hover:bg-blue-900"
+                    >
+                      Abrir fonte curada
+                    </a>
+                  )}
                 </article>
               ))}
             </div>

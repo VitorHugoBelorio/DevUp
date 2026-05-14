@@ -59,12 +59,18 @@ export const diagnosticResultJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "type", "reason"],
+        required: ["title", "type", "url", "source_id", "reason"],
         properties: {
           title: { type: "string" },
           type: {
             type: "string",
-            enum: ["article", "course", "documentation"]
+            enum: ["platform", "article", "blog", "documentation", "course", "video", "community", "tool", "other"]
+          },
+          url: {
+            anyOf: [{ type: "string" }, { type: "null" }]
+          },
+          source_id: {
+            anyOf: [{ type: "string" }, { type: "null" }]
           },
           reason: { type: "string" }
         }
