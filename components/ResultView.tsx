@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RecommendedResourcesSection } from "@/components/RecommendedResourcesSection";
 import type { DiagnosticResult, StoredDiagnostic } from "@/types/diagnostic";
 
 function Section({
@@ -180,6 +181,8 @@ export function ResultView({ diagnostic }: { diagnostic: StoredDiagnostic }) {
               ))}
             </div>
           </Section>
+
+          <RecommendedResourcesSection diagnosticId={diagnostic.id} />
 
           <Section title="Insights">
             <div className="grid gap-5 md:grid-cols-2">
