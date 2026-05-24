@@ -1,27 +1,17 @@
 import OpenAI from "openai";
 import { diagnosticResultJsonSchema } from "@/lib/ai/resultSchema";
 import { buildSystemPrompt, buildUserPrompt } from "@/lib/ai/prompt";
+import { generateWithVertex } from "@/lib/ai/vertexClient";
+import { AiConfigurationError, AiResponseError } from "@/lib/ai/errors";
 import { diagnosticResultSchema } from "@/lib/services/diagnosticSchemas";
 import type { CuratedKnowledgeResource, DiagnosticInput, DiagnosticResult } from "@/types/diagnostic";
-
-export class AiConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AiConfigurationError";
-  }
-}
-
-export class AiResponseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AiResponseError";
-  }
-}
 
 export type GeneratedDiagnostic = {
   result: DiagnosticResult;
   model: string;
 };
+
+type AiProvider = "openai" | "vertex";
 
 function enforceCuratedRecommendationLinks(
   result: DiagnosticResult,
@@ -56,6 +46,32 @@ function enforceCuratedRecommendationLinks(
 }
 
 export async function generateDiagnosticPlan(input: DiagnosticInput): Promise<GeneratedDiagnostic> {
+  const provider = getAiProvider();
+  const generated = provider === "vertex" ? await generateVertexOutput(input) : await generateOpenAiOutput(input);
+
+  try {
+    const result = diagnosticResultSchema.parse(JSON.parse(generated.outputText));
+
+    return {
+      result: enforceCuratedRecommendationLinks(result, input.knowledge_resources),
+      model: generated.model
+    };
+  } catch (error) {
+    throw new AiResponseError(error instanceof Error ? error.message : "Invalid AI JSON response.");
+  }
+}
+
+function getAiProvider(): AiProvider {
+  const provider = process.env.AI_PROVIDER?.trim().toLowerCase();
+
+  if (provider === "vertex" || provider === "openai") {
+    return provider;
+  }
+
+  return process.env.VERTEX_AI_PROJECT_ID ? "vertex" : "openai";
+}
+
+async function generateOpenAiOutput(input: DiagnosticInput): Promise<{ outputText: string; model: string }> {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.4-mini";
 
@@ -92,14 +108,12 @@ export async function generateDiagnosticPlan(input: DiagnosticInput): Promise<Ge
     throw new AiResponseError("The AI response did not include output text.");
   }
 
-  try {
-    const result = diagnosticResultSchema.parse(JSON.parse(outputText));
+  return {
+    outputText,
+    model
+  };
+}
 
-    return {
-      result: enforceCuratedRecommendationLinks(result, input.knowledge_resources),
-      model
-    };
-  } catch (error) {
-    throw new AiResponseError(error instanceof Error ? error.message : "Invalid AI JSON response.");
-  }
+async function generateVertexOutput(input: DiagnosticInput): Promise<{ outputText: string; model: string }> {
+  return generateWithVertex(input);
 }

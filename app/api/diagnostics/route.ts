@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { AiConfigurationError, AiResponseError } from "@/lib/ai/generateDiagnosticPlan";
+import { AiConfigurationError, AiResponseError } from "@/lib/ai/errors";
 import { createApiResponsePayload, createDiagnostic } from "@/lib/services/diagnosticService";
 import { getCurrentUserFromRequest } from "@/lib/services/userAuth";
 
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: "AI_NOT_CONFIGURED",
-          message: "A chave da OpenAI ainda nao foi configurada."
+          message: "O provedor de IA ainda nao foi configurado corretamente."
         },
         { status: 503 }
       );
