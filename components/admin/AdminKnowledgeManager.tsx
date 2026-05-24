@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { recommendationTypes } from "@/types/diagnostic";
-import type { KnowledgeFlag, KnowledgeResource, RecommendationType } from "@/types/diagnostic";
+import { recommendationTypes, resourceLevels } from "@/types/diagnostic";
+import type { KnowledgeFlag, KnowledgeResource, RecommendationType, ResourceLevel } from "@/types/diagnostic";
 
 type EditableResource = KnowledgeResource & {
   flagText: string;
@@ -23,6 +23,16 @@ const typeLabels: Record<RecommendationType, string> = {
   tool: "Ferramenta",
   other: "Outro"
 };
+
+const levelLabels: Record<ResourceLevel, string> = {
+  beginner: "Iniciante",
+  intermediate: "Intermediario",
+  advanced: "Avancado"
+};
+
+function dateToInputValue(value: string | null): string {
+  return value ? value.slice(0, 10) : "";
+}
 
 function resourceToEditable(resource: KnowledgeResource): EditableResource {
   return {
@@ -48,9 +58,16 @@ function newResource(): EditableResource {
     subject: "",
     url: "",
     type: "article",
+    level: "beginner",
     description: "",
+    sourceName: "",
+    estimatedMinutes: null,
     priority: 0,
     isActive: true,
+    isMainTrack: false,
+    isOutdated: false,
+    publishedAt: null,
+    lastCheckedAt: null,
     flags: [],
     flagText: ""
   };
@@ -163,6 +180,26 @@ function ResourceCard({
             <span className="rounded-full bg-blue-950 px-3 py-1 text-xs font-semibold text-skyGlow ring-1 ring-blue-800/40">
               prioridade {resource.priority}
             </span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-slate-300">
+              {levelLabels[resource.level]}
+            </span>
+            {resource.estimatedMinutes ? (
+              <span className="rounded-full bg-slate-900 px-2.5 py-1 text-slate-400">
+                {resource.estimatedMinutes} min
+              </span>
+            ) : null}
+            {resource.isMainTrack ? (
+              <span className="rounded-full bg-amber-500/10 px-2.5 py-1 font-semibold text-amber-100 ring-1 ring-amber-400/20">
+                trilha principal
+              </span>
+            ) : null}
+            {resource.isOutdated ? (
+              <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-semibold text-red-100 ring-1 ring-red-400/20">
+                desatualizada
+              </span>
+            ) : null}
           </div>
           {flags.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -747,6 +784,41 @@ export function AdminKnowledgeManager({
                     ))}
                   </select>
                 </Field>
+                <Field label="Nivel">
+                  <select
+                    className="devup-input text-sm"
+                    value={selectedResource.level}
+                    onChange={(event) => updateSelectedResource({ level: event.target.value as ResourceLevel })}
+                  >
+                    {resourceLevels.map((level) => (
+                      <option key={level} value={level}>
+                        {levelLabels[level]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Fonte">
+                  <input
+                    className="devup-input text-sm"
+                    value={selectedResource.sourceName ?? ""}
+                    onChange={(event) => updateSelectedResource({ sourceName: event.target.value })}
+                    placeholder="Ex: MDN, Google, Microsoft Learn"
+                  />
+                </Field>
+                <Field label="Tempo estimado em minutos">
+                  <input
+                    className="devup-input text-sm"
+                    type="number"
+                    min={1}
+                    value={selectedResource.estimatedMinutes ?? ""}
+                    onChange={(event) =>
+                      updateSelectedResource({
+                        estimatedMinutes: event.target.value ? Number(event.target.value) : null
+                      })
+                    }
+                    placeholder="Ex: 12"
+                  />
+                </Field>
                 <Field label="Prioridade" hint="Use valores maiores para fontes que devem ser priorizadas nas recomendacoes.">
                   <input
                     className="devup-input text-sm"
@@ -764,6 +836,42 @@ export function AdminKnowledgeManager({
                     <option value="active">Ativa para IA</option>
                     <option value="inactive">Inativa</option>
                   </select>
+                </Field>
+                <Field label="Uso na trilha">
+                  <select
+                    className="devup-input text-sm"
+                    value={selectedResource.isMainTrack ? "main" : "complementary"}
+                    onChange={(event) => updateSelectedResource({ isMainTrack: event.target.value === "main" })}
+                  >
+                    <option value="complementary">Complementar</option>
+                    <option value="main">Trilha principal</option>
+                  </select>
+                </Field>
+                <Field label="Atualizacao">
+                  <select
+                    className="devup-input text-sm"
+                    value={selectedResource.isOutdated ? "outdated" : "current"}
+                    onChange={(event) => updateSelectedResource({ isOutdated: event.target.value === "outdated" })}
+                  >
+                    <option value="current">Atualizada</option>
+                    <option value="outdated">Desatualizada</option>
+                  </select>
+                </Field>
+                <Field label="Publicado em">
+                  <input
+                    className="devup-input text-sm"
+                    type="date"
+                    value={dateToInputValue(selectedResource.publishedAt)}
+                    onChange={(event) => updateSelectedResource({ publishedAt: event.target.value || null })}
+                  />
+                </Field>
+                <Field label="Ultima verificacao">
+                  <input
+                    className="devup-input text-sm"
+                    type="date"
+                    value={dateToInputValue(selectedResource.lastCheckedAt)}
+                    onChange={(event) => updateSelectedResource({ lastCheckedAt: event.target.value || null })}
+                  />
                 </Field>
               </div>
 

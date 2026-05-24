@@ -52,6 +52,19 @@ enum KnowledgeResourceType {
   other
 }
 
+enum KnowledgeResourceLevel {
+  beginner
+  intermediate
+  advanced
+}
+
+enum ResourceInteractionStatus {
+  VIEWED
+  OPENED
+  SAVED
+  DISMISSED
+}
+
 model User {
   id              String           @id @default(cuid())
   name            String?
@@ -63,6 +76,7 @@ model User {
   magicLinks      MagicLinkToken[]
   diagnostics     Diagnostic[]
   accessLogs      AccessLog[]
+  resourceInteractions UserResourceInteraction[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -182,19 +196,29 @@ model KnowledgeFlag {
 }
 
 model KnowledgeResource {
-  id          String                  @id @default(cuid())
-  title       String
-  subject     String
-  url         String                  @unique
-  type        KnowledgeResourceType
-  description String
-  priority    Int                     @default(0)
-  isActive    Boolean                 @default(true)
-  flags       KnowledgeResourceFlag[]
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @updatedAt
+  id               String                    @id @default(cuid())
+  title            String
+  subject          String
+  url              String                    @unique
+  type             KnowledgeResourceType
+  level            KnowledgeResourceLevel    @default(beginner)
+  description      String
+  sourceName       String?
+  estimatedMinutes Int?
+  priority         Int                       @default(0)
+  isActive         Boolean                   @default(true)
+  isMainTrack      Boolean                   @default(false)
+  isOutdated       Boolean                   @default(false)
+  publishedAt      DateTime?
+  lastCheckedAt    DateTime?
+  flags            KnowledgeResourceFlag[]
+  interactions     UserResourceInteraction[]
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
 
   @@index([isActive, priority])
+  @@index([isActive, isMainTrack, isOutdated])
+  @@index([level])
   @@index([subject])
 }
 
@@ -206,4 +230,24 @@ model KnowledgeResourceFlag {
 
   @@id([resourceId, flagId])
   @@index([flagId])
+}
+
+model UserResourceInteraction {
+  id          String                    @id @default(cuid())
+  userId      String
+  resourceId  String
+  status      ResourceInteractionStatus @default(VIEWED)
+  viewedAt    DateTime?
+  clickedAt   DateTime?
+  savedAt     DateTime?
+  dismissedAt DateTime?
+  user        User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource    KnowledgeResource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@unique([userId, resourceId])
+  @@index([userId])
+  @@index([resourceId])
+  @@index([status])
 }

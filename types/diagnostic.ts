@@ -12,6 +12,12 @@ export const recommendationTypes = [
 
 export type RecommendationType = (typeof recommendationTypes)[number];
 
+export const resourceLevels = ["beginner", "intermediate", "advanced"] as const;
+
+export type ResourceLevel = (typeof resourceLevels)[number];
+
+export type ResourceInteractionStatus = "VIEWED" | "OPENED" | "SAVED" | "DISMISSED";
+
 export const questionTypes = ["short_text", "long_text", "number", "scale", "single_select", "multi_select"] as const;
 
 export type QuestionType = (typeof questionTypes)[number];
@@ -150,9 +156,16 @@ export type KnowledgeResource = {
   subject: string;
   url: string;
   type: RecommendationType;
+  level: ResourceLevel;
   description: string;
+  sourceName: string | null;
+  estimatedMinutes: number | null;
   priority: number;
   isActive: boolean;
+  isMainTrack: boolean;
+  isOutdated: boolean;
+  publishedAt: string | null;
+  lastCheckedAt: string | null;
   flags: KnowledgeFlag[];
 };
 
@@ -164,6 +177,21 @@ export type CuratedKnowledgeResource = {
   type: RecommendationType;
   description: string;
   flags: string[];
+};
+
+export type RecommendedResource = {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+  type: RecommendationType;
+  level: ResourceLevel;
+  sourceName: string | null;
+  estimatedMinutes: number | null;
+  tags: string[];
+  recommendationReason: string;
+  score: number;
+  interactionStatus: ResourceInteractionStatus | null;
 };
 
 export type DiagnosticAnswerValue = string | number | string[];

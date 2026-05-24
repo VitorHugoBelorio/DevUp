@@ -7,7 +7,8 @@ import type {
   DiagnosticInput,
   KnowledgeFlag,
   KnowledgeResource,
-  RecommendationType
+  RecommendationType,
+  ResourceLevel
 } from "@/types/diagnostic";
 import { normalizeText, toQuestionKey, uniqueStable } from "@/lib/utils/text";
 
@@ -24,9 +25,16 @@ type ResourceRecord = {
   subject: string;
   url: string;
   type: RecommendationType;
+  level: ResourceLevel;
   description: string;
+  sourceName: string | null;
+  estimatedMinutes: number | null;
   priority: number;
   isActive: boolean;
+  isMainTrack: boolean;
+  isOutdated: boolean;
+  publishedAt: Date | null;
+  lastCheckedAt: Date | null;
   flags: Array<{
     flag: FlagRecord;
   }>;
@@ -38,9 +46,16 @@ type KnowledgeResourcePayload = {
   subject?: string;
   url?: string;
   type?: RecommendationType;
+  level?: ResourceLevel;
   description?: string;
+  sourceName?: string | null;
+  estimatedMinutes?: number | null;
   priority?: number;
   isActive?: boolean;
+  isMainTrack?: boolean;
+  isOutdated?: boolean;
+  publishedAt?: string | Date | null;
+  lastCheckedAt?: string | Date | null;
   flagKeys?: string[];
   flags?: Array<Partial<KnowledgeFlag> | string>;
 };
@@ -70,9 +85,16 @@ function toResource(record: ResourceRecord): KnowledgeResource {
     subject: record.subject,
     url: record.url,
     type: record.type,
+    level: record.level,
     description: record.description,
+    sourceName: record.sourceName,
+    estimatedMinutes: record.estimatedMinutes,
     priority: record.priority,
     isActive: record.isActive,
+    isMainTrack: record.isMainTrack,
+    isOutdated: record.isOutdated,
+    publishedAt: record.publishedAt?.toISOString() ?? null,
+    lastCheckedAt: record.lastCheckedAt?.toISOString() ?? null,
     flags: record.flags.map((item) => toFlag(item.flag)).sort((left, right) => left.label.localeCompare(right.label))
   };
 }
@@ -174,15 +196,21 @@ function normalizeResourcePayload(payload: unknown): Omit<KnowledgeResource, "id
 } {
   const raw = payload as KnowledgeResourcePayload;
   const type = raw.type ?? "other";
+  const level = raw.level ?? "beginner";
 
   if (!recommendationTypes.includes(type)) {
     throw new Error("Tipo de fonte invalido.");
+  }
+
+  if (!["beginner", "intermediate", "advanced"].includes(level)) {
+    throw new Error("Nivel da fonte invalido.");
   }
 
   const title = normalizeText(String(raw.title ?? ""));
   const subject = normalizeText(String(raw.subject ?? ""));
   const description = normalizeText(String(raw.description ?? ""));
   const url = urlSchema.parse(String(raw.url ?? ""));
+  const estimatedMinutes = Number(raw.estimatedMinutes ?? 0);
   const rawFlags = [
     ...(raw.flagKeys ?? []),
     ...(raw.flags ?? []).map((flag) => (typeof flag === "string" ? flag : flag.key ?? flag.label ?? ""))
@@ -207,11 +235,32 @@ function normalizeResourcePayload(payload: unknown): Omit<KnowledgeResource, "id
     subject,
     url,
     type,
+    level,
     description,
+    sourceName: raw.sourceName ? normalizeText(String(raw.sourceName)) : null,
+    estimatedMinutes: Number.isFinite(estimatedMinutes) && estimatedMinutes > 0 ? Math.max(1, estimatedMinutes) : null,
     priority: Number(raw.priority ?? 0),
     isActive: raw.isActive ?? true,
+    isMainTrack: raw.isMainTrack ?? false,
+    isOutdated: raw.isOutdated ?? false,
+    publishedAt: parseOptionalDate(raw.publishedAt),
+    lastCheckedAt: parseOptionalDate(raw.lastCheckedAt),
     flagKeys
   };
+}
+
+function parseOptionalDate(value: string | Date | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
 }
 
 async function ensureFlags(flagKeys: string[]): Promise<KnowledgeFlag[]> {
@@ -294,9 +343,16 @@ export async function createKnowledgeResource(payload: unknown): Promise<Knowled
       subject: resource.subject,
       url: resource.url,
       type: resource.type,
+      level: resource.level,
       description: resource.description,
+      sourceName: resource.sourceName,
+      estimatedMinutes: resource.estimatedMinutes,
       priority: resource.priority,
       isActive: resource.isActive,
+      isMainTrack: resource.isMainTrack,
+      isOutdated: resource.isOutdated,
+      publishedAt: resource.publishedAt,
+      lastCheckedAt: resource.lastCheckedAt,
       flags: {
         create: flags.map((flag) => ({
           flagId: flag.id
@@ -328,9 +384,16 @@ export async function updateKnowledgeResource(id: string, payload: unknown): Pro
       subject: resource.subject,
       url: resource.url,
       type: resource.type,
+      level: resource.level,
       description: resource.description,
+      sourceName: resource.sourceName,
+      estimatedMinutes: resource.estimatedMinutes,
       priority: resource.priority,
       isActive: resource.isActive,
+      isMainTrack: resource.isMainTrack,
+      isOutdated: resource.isOutdated,
+      publishedAt: resource.publishedAt,
+      lastCheckedAt: resource.lastCheckedAt,
       flags: {
         create: flags.map((flag) => ({
           flagId: flag.id
@@ -354,7 +417,9 @@ export async function deleteKnowledgeResource(id: string): Promise<void> {
 }
 
 export async function getRelevantKnowledgeResources(input: DiagnosticInput, limit = 8): Promise<CuratedKnowledgeResource[]> {
-  const resources = (await getAllKnowledgeResources()).filter((resource) => resource.isActive);
+  const resources = (await getAllKnowledgeResources()).filter(
+    (resource) => resource.isActive && !resource.isOutdated
+  );
   const terms = extractSearchTerms(input);
   const scored = resources
     .map((resource) => ({
