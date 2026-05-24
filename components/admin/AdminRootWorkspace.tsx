@@ -52,6 +52,7 @@ export function AdminRootWorkspace({
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const activeItem = navigationItems.find((item) => item.value === tab) ?? navigationItems[0];
+  const showSidebarText = isSidebarExpanded || isMobileSidebarOpen;
 
   async function handleLogout() {
     await Promise.allSettled([
@@ -79,16 +80,16 @@ export function AdminRootWorkspace({
       ) : null}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-blue-950/70 bg-slate-950/95 shadow-2xl shadow-black/40 transition-all duration-300 lg:sticky lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-blue-950/70 bg-slate-950/95 shadow-2xl shadow-black/40 transition-all duration-300 lg:translate-x-0 ${
           isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } ${isSidebarExpanded ? "w-72" : "w-72 lg:w-24"}`}
       >
-        <div className="flex h-20 items-center gap-3 border-b border-blue-950/70 px-5">
+        <div className="flex h-20 items-center gap-3 border-b border-blue-950/70 px-4">
           <Link href="/" className="flex min-w-0 items-center gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600/15 text-lg font-black text-skyGlow ring-1 ring-blue-500/30">
               D
             </span>
-            {isSidebarExpanded ? (
+            {showSidebarText ? (
               <span className="devup-brand truncate">
                 Dev<span>Up</span>
               </span>
@@ -97,7 +98,7 @@ export function AdminRootWorkspace({
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-5">
-          <p className={`mb-3 px-3 text-sm font-semibold text-slate-500 ${isSidebarExpanded ? "" : "sr-only"}`}>
+          <p className={`mb-3 px-3 text-sm font-semibold text-slate-500 ${showSidebarText ? "" : "sr-only"}`}>
             Admin
           </p>
 
@@ -117,8 +118,8 @@ export function AdminRootWorkspace({
                     isActive
                       ? "bg-blue-600/20 text-white ring-1 ring-blue-500/35"
                       : "text-slate-400 hover:bg-hover hover:text-slate-100"
-                  } ${isSidebarExpanded ? "" : "justify-center"}`}
-                  title={isSidebarExpanded ? undefined : item.label}
+                  } ${showSidebarText ? "" : "justify-center"}`}
+                  title={showSidebarText ? undefined : item.label}
                 >
                   <span
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-bold ring-1 transition ${
@@ -129,7 +130,7 @@ export function AdminRootWorkspace({
                   >
                     {item.icon}
                   </span>
-                  {isSidebarExpanded ? (
+                  {showSidebarText ? (
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold">{item.label}</span>
                       <span className="mt-0.5 block truncate text-xs text-slate-500">{item.description}</span>
@@ -142,7 +143,7 @@ export function AdminRootWorkspace({
         </div>
 
         <div className="border-t border-blue-950/70 px-5 py-4">
-          {isSidebarExpanded ? (
+          {showSidebarText ? (
             <p className="text-xs leading-5 text-slate-600">Painel de configuracao do DevUp.</p>
           ) : (
             <div className="mx-auto h-1.5 w-8 rounded-full bg-blue-950" />
@@ -150,9 +151,9 @@ export function AdminRootWorkspace({
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 border-b border-blue-950/60 bg-slate-950/72 px-4 py-4 backdrop-blur-xl sm:px-5 lg:px-6">
-          <div className="flex w-full items-center justify-between gap-4">
+      <div className={`min-w-0 flex-1 transition-[padding] duration-300 ${isSidebarExpanded ? "lg:pl-72" : "lg:pl-24"}`}>
+        <header className="sticky top-0 z-20 border-b border-blue-950/60 bg-slate-950/72 px-4 backdrop-blur-xl sm:px-5 lg:px-6">
+          <div className="flex h-20 w-full items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <button
                 type="button"
